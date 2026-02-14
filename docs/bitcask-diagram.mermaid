@@ -1,0 +1,79 @@
+classDiagram
+    class Bitcask {
+        -KeyDir keydir
+        -DataFile activeFile
+        -List~DataFile~ readOnlyFiles
+        -Config config
+        +put(key, value)
+        +get(key) Value
+        +delete(key)
+        +close()
+        +sync()
+        +merge()
+    }
+
+    class KeyDir {
+        -Map~Key, RecordMetadata~ index
+        +update(key, metadata)
+        +get(key) RecordMetadata
+        +remove(key)
+        +rebuildFromFiles(files)
+        +rebuildFromHintFiles(hintFiles)
+    }
+
+    class RecordMetadata {
+        +int fileId
+        +int valueSize
+        +long valuePosition
+        +long timestamp
+    }
+
+    class DataFile {
+        +int fileId
+        +FileHandle handle
+        +long currentSize
+        +boolean isReadOnly
+        +appendRecord(Record)
+        +readRecord(offset) Record
+        +close()
+    }
+
+    class Record {
+        +long crc
+        +long timestamp
+        +int keySize
+        +int valueSize
+        +Byte[] key
+        +Byte[] value
+        +serialize() Bytes
+        +deserialize(Bytes)$ Record
+    }
+
+    class HintFile {
+        +int fileId
+        +writeEntry(HintEntry)
+        +readEntries() List~HintEntry~
+    }
+
+    class HintEntry {
+        +long timestamp
+        +int keySize
+        +int valueSize
+        +long offset
+        +Byte[] key
+    }
+
+    class Compactor {
+        +mergeStaleFiles(List~DataFile~)
+        +createHintFile(DataFile)
+        +removeOldFiles()
+    }
+
+    Bitcask --> KeyDir : maintains
+    Bitcask --> DataFile : writes to / reads from
+    KeyDir --> RecordMetadata : stores
+    DataFile --> Record : contains
+    Compactor --> DataFile : processes
+    Compactor --> HintFile : generates
+    HintFile --> HintEntry : contains
+    Bitcask --> Compactor : triggers
