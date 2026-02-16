@@ -7,9 +7,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Bitcask struct {
+	mu                 sync.RWMutex
 	keyDir             *KeyDir
 	activeFile         *DataFile
 	readOnlyFiles      []*DataFile
@@ -77,4 +79,45 @@ func getDataFileIds(dir string) ([]uint32, error) {
 		ids = append(ids, uint32(id))
 	}
 	return ids, nil
+}
+
+func (bc *Bitcask) Put(key string, value string) (bool, error) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	r := NewRecord([]byte(key), []byte(value))
+	o := bc.activeFile.offset
+
+	if _, err := bc.activeFile.AppendRecord(r); err != nil {
+		return false, fmt.Errorf("Append Error")
+	}
+
+	rmd := &RecordMetadata{
+		fileId:        bc.activeFile.fileId,
+		valueSize:     r.valueSize,
+		valuePosition: o + 24 + int64(len(key)),
+		timestamp:     r.timestamp,
+	}
+
+	bc.keyDir.Update(key, rmd)
+
+	return true, nil
+}
+
+func (bc *Bitcask) Get(key string) (string, error) {
+	bc.mu.RLock()
+	defer bc.mu.RUnlock()
+
+	valueO := bc.keyDir.Get(key)
+
+	return "", nil
+}
+
+func (bc *Bitcask) Delete(key string) (bool, error) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	//add tombstone here
+
+	return true, nil
 }
