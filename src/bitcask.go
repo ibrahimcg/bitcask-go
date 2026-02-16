@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -108,16 +110,72 @@ func (bc *Bitcask) Get(key string) (string, error) {
 	bc.mu.RLock()
 	defer bc.mu.RUnlock()
 
-	valueO := bc.keyDir.Get(key)
+	rmd := bc.keyDir.Get(key)
+	if rmd == nil {
+		return "", fmt.Errorf("key not found")
+	}
 
-	return "", nil
+	recordOffset := rmd.valuePosition - 24 - int64(len(key))
+
+	var rec *Record
+	var err error
+
+	if rmd.fileId == bc.activeFile.fileId {
+		rec, err = bc.activeFile.ReadRecord(recordOffset)
+	} else {
+		for _, df := range bc.readOnlyFiles {
+			if df.fileId == rmd.fileId {
+				rec, err = df.ReadRecord(recordOffset)
+				break
+			}
+		}
+		if rec == nil && err == nil {
+			return "", fmt.Errorf("data file %d not found", rmd.fileId)
+		}
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to read record: %w", err)
+	}
+
+	return string(rec.value), nil
 }
 
 func (bc *Bitcask) Delete(key string) (bool, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
-	//add tombstone here
+	rmd := bc.keyDir.Get(key)
+	if rmd == nil {
+		return false, fmt.Errorf("key not found")
+	}
+
+	// Overwrite the valueSize field in the record on disk with MaxUint32 (-1)
+	recordOffset := rmd.valuePosition - 24 - int64(len(key))
+	valueSizeOffset := recordOffset + 20
+
+	var df *DataFile
+	if rmd.fileId == bc.activeFile.fileId {
+		df = bc.activeFile
+	} else {
+		for _, f := range bc.readOnlyFiles {
+			if f.fileId == rmd.fileId {
+				df = f
+				break
+			}
+		}
+	}
+	if df == nil {
+		return false, fmt.Errorf("data file %d not found", rmd.fileId)
+	}
+
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], math.MaxUint32)
+	if _, err := df.file.WriteAt(buf[:], valueSizeOffset); err != nil {
+		return false, fmt.Errorf("failed to write tombstone: %w", err)
+	}
+
+	bc.keyDir.Remove(key)
 
 	return true, nil
 }
