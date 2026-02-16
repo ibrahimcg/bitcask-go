@@ -4,7 +4,9 @@ import (
 	"encoding/binary"
 	"hash/crc64"
 	"io"
+	"time"
 )
+
 type Record struct {
 	crc       uint64
 	timestamp uint64
@@ -14,17 +16,32 @@ type Record struct {
 	value     []byte
 }
 
+func NewRecord(key, value []byte) *Record {
+	table := crc64.MakeTable(crc64.ECMA)
+	r := &Record{
+		timestamp: uint64(time.Now().UnixNano()),
+		keySize:   uint32(len(key)),
+		valueSize: uint32(len(value)),
+		key:       key,
+		value:     value,
+	}
+
+	buf := r.Encode()
+	r.crc = crc64.Checksum(buf[8:], table)
+	return r
+}
+
 func (r *Record) Encode() []byte {
 	headerSize := 24
-    buf := make([]byte, headerSize + len(r.key) + len(r.value))
-    binary.BigEndian.PutUint64(buf[0:8], r.crc)
-    binary.BigEndian.PutUint64(buf[8:16], r.timestamp)
-    binary.BigEndian.PutUint32(buf[16:20], r.keySize)
-    binary.BigEndian.PutUint32(buf[20:24], r.valueSize)
-    copy(buf[24:], r.key)
-    copy(buf[24+len(r.key):], r.value)
-    return buf
-  }
+	buf := make([]byte, headerSize+len(r.key)+len(r.value))
+	binary.BigEndian.PutUint64(buf[0:8], r.crc)
+	binary.BigEndian.PutUint64(buf[8:16], r.timestamp)
+	binary.BigEndian.PutUint32(buf[16:20], r.keySize)
+	binary.BigEndian.PutUint32(buf[20:24], r.valueSize)
+	copy(buf[24:], r.key)
+	copy(buf[24+len(r.key):], r.value)
+	return buf
+}
 
 func DecodeRecord(r io.Reader) (*Record, error) {
 	header := make([]byte, 24)
