@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 type DataFile struct {
@@ -11,6 +12,38 @@ type DataFile struct {
 	file       *os.File
 	offset     int64
 	isReadOnly bool
+}
+
+func NewDataFile(dir string, fileId uint32) (*DataFile, error) {
+	path := filepath.Join(dir, fmt.Sprintf("%d.data", fileId))
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return &DataFile{
+		fileId: fileId,
+		file:   f,
+		offset: 0,
+	}, nil
+}
+
+func OpenDataFile(dir string, fileId uint32) (*DataFile, error) {
+	path := filepath.Join(dir, fmt.Sprintf("%d.data", fileId))
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	stat, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return &DataFile{
+		fileId:     fileId,
+		file:       f,
+		offset:     stat.Size(),
+		isReadOnly: true,
+	}, nil
 }
 
 func (df *DataFile) AppendRecord(r *Record) (int64, error) {
