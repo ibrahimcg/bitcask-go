@@ -166,6 +166,27 @@ func (bc *Bitcask) Sync() error {
 	return bc.activeFile.file.Sync()
 }
 
+func (bc *Bitcask) Close() error {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	if err := bc.activeFile.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync active file: %w", err)
+	}
+
+	if err := bc.activeFile.Close(); err != nil {
+		return fmt.Errorf("failed to close active file: %w", err)
+	}
+
+	for _, df := range bc.readOnlyFiles {
+		if err := df.Close(); err != nil {
+			return fmt.Errorf("failed to close data file %d: %w", df.fileId, err)
+		}
+	}
+
+	return nil
+}
+
 func (bc *Bitcask) Merge() error {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
