@@ -15,7 +15,7 @@ type DataFile struct {
 }
 
 func NewDataFile(dir string, fileId uint32) (*DataFile, error) {
-	path := filepath.Join(dir, fmt.Sprintf("%d.data", fileId))
+	path := filepath.Join(dir, fmt.Sprintf("%06d.data", fileId))
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func NewDataFile(dir string, fileId uint32) (*DataFile, error) {
 }
 
 func OpenDataFile(dir string, fileId uint32) (*DataFile, error) {
-	path := filepath.Join(dir, fmt.Sprintf("%d.data", fileId))
+	path := filepath.Join(dir, fmt.Sprintf("%06d.data", fileId))
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -65,6 +65,13 @@ func (df *DataFile) AppendRecord(r *Record) (int64, error) {
 
 func (df *DataFile) ReadRecord(offset int64) (*Record, error) {
 	reader := io.NewSectionReader(df.file, offset, df.offset-offset)
+	return DecodeRecord(reader)
+}
+
+// ReadRecordAt reads a record at the given offset using fileSize as the upper bound.
+// This avoids racing on df.offset when reading from the active file concurrently.
+func (df *DataFile) ReadRecordAt(offset int64, fileSize int64) (*Record, error) {
+	reader := io.NewSectionReader(df.file, offset, fileSize-offset)
 	return DecodeRecord(reader)
 }
 
