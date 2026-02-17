@@ -161,7 +161,35 @@ func (bc *Bitcask) Delete(key string) (bool, error) {
 
 func (bc *Bitcask) Sync() error {
 	bc.mu.Lock()
-	defer bc.mu.Lock()
+	defer bc.mu.Unlock()
 
 	return bc.activeFile.file.Sync()
+}
+
+func (bc *Bitcask) Merge() error {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	if len(bc.readOnlyFiles) == 0 {
+		return nil
+	}
+
+	compactor := NewCompactor(bc.dataFilesDirectory, bc.keyDir)
+
+	mergedFiles, err := compactor.MergeStaleFiles(bc.readOnlyFiles)
+	if err != nil {
+		return fmt.Errorf("failed to merge stale files: %w", err)
+	}
+
+	if err := compactor.removeOldFiles(); err != nil {
+		return fmt.Errorf("failed to remove old files: %w", err)
+	}
+
+	if mergedFiles != nil {
+		bc.readOnlyFiles = mergedFiles
+	} else {
+		bc.readOnlyFiles = make([]*DataFile, 0)
+	}
+
+	return nil
 }
