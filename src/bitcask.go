@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -150,32 +148,20 @@ func (bc *Bitcask) Delete(key string) (bool, error) {
 		return false, fmt.Errorf("key not found")
 	}
 
-	// Overwrite the valueSize field in the record on disk with MaxUint32 (-1)
-	recordOffset := rmd.valuePosition - 24 - int64(len(key))
-	valueSizeOffset := recordOffset + 20
-
-	var df *DataFile
-	if rmd.fileId == bc.activeFile.fileId {
-		df = bc.activeFile
-	} else {
-		for _, f := range bc.readOnlyFiles {
-			if f.fileId == rmd.fileId {
-				df = f
-				break
-			}
-		}
-	}
-	if df == nil {
-		return false, fmt.Errorf("data file %d not found", rmd.fileId)
-	}
-
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], math.MaxUint32)
-	if _, err := df.file.WriteAt(buf[:], valueSizeOffset); err != nil {
+	// Append a tombstone record (empty value) to the active file
+	r := NewRecord([]byte(key), []byte{})
+	if _, err := bc.activeFile.AppendRecord(r); err != nil {
 		return false, fmt.Errorf("failed to write tombstone: %w", err)
 	}
 
 	bc.keyDir.Remove(key)
 
 	return true, nil
+}
+
+func (bc *Bitcask) Sync() error {
+	bc.mu.Lock()
+	defer bc.mu.Lock()
+
+	return bc.activeFile.file.Sync()
 }
