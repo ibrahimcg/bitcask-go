@@ -36,6 +36,13 @@ func (kd *KeyDir) Remove(key string) {
 	kd.mu.Unlock()
 }
 
+func (kd *KeyDir) Len() int {
+	kd.mu.RLock()
+	n := len(kd.index)
+	kd.mu.RUnlock()
+	return n
+}
+
 func (kd *KeyDir) Keys() []string {
 	kd.mu.RLock()
 	keys := make([]string, 0, len(kd.index))
